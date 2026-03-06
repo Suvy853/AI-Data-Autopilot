@@ -20,21 +20,34 @@ use_sample = st.sidebar.checkbox("Use Sample Data?", value=True)
 df = None
 
 if use_sample:
-    # Load sample data
     try:
-        df = pd.read_csv("sample_data/subscription_data.csv")
+        df = load_csv("sample_data/subscription_data.csv")
+        quality_report = check_data_quality(df)
         st.sidebar.success("✓ Loaded sample data")
+        df = clean_data(df, quality_report)
+        
     except FileNotFoundError:
-        st.sidebar.error("❌ Sample data not found. Run: python generate_sample_data.py")
+        st.sidebar.error("❌ Sample data not found")
+        df = None
 
 else:
-    # User uploads their own CSV
     uploaded_file = st.sidebar.file_uploader("Choose CSV file", type="csv")
     
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.sidebar.success(f"✓ Loaded {uploaded_file.name}")
-
+        try:
+            # Use pd.read_csv directly for uploaded files (not load_csv)
+            df = pd.read_csv(uploaded_file)
+            
+            # Check quality
+            quality_report = check_data_quality(df)
+            st.sidebar.success(f"✓ Loaded {uploaded_file.name}")
+            
+            # Clean the data
+            df = clean_data(df, quality_report)
+            
+        except Exception as e:
+            st.sidebar.error(f"❌ Error: {e}")
+            df = None
 # ============================================
 # MAIN CONTENT
 # ============================================
@@ -51,6 +64,30 @@ if df is not None:
         st.metric("Columns", len(df.columns))
     with col3:
         st.metric("File Size", f"{df.memory_usage(deep=True).sum() / 1024:.1f} KB")
+
+# QUALITY REPORT SECTION 
+    st.subheader("📊 Data Quality Report")
+    
+    quality_report = check_data_quality(df)
+    
+    # Show quality metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Quality Score", f"{quality_report['quality_score']:.1f}%")
+    with col2:
+        st.metric("Blank Cells", quality_report['blank_cells'])
+    with col3:
+        st.metric("Duplicate Rows", quality_report['duplicate_rows'])
+    with col4:
+        st.metric("Column Types Detected", len(quality_report['column_types']))
+    
+    # Show issues if any
+    if quality_report['issues']:
+        st.warning("⚠️ Issues Found:")
+        for issue in quality_report['issues']:
+            st.write(f"  • {issue}")
+    else:
+        st.success("✓ No major quality issues found")        
     
     # Show column information
     st.subheader("Column Information")
