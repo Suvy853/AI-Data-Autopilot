@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from src.data_loader import load_csv, check_data_quality, clean_data
 
 # Page configuration
 st.set_page_config(page_title="Data Autopilot", layout="wide")
@@ -71,3 +72,22 @@ if df is not None:
 
 else:
     st.info("Check 'Use Sample Data?' to get started, or upload your own CSV file")
+
+
+if use_sample:
+    try:
+        df = load_csv("sample_data/subscription_data.csv")
+        
+        # Check quality
+        quality_report = check_data_quality(df)
+        st.sidebar.success("✓ Loaded sample data")
+        
+        # Show quality before cleaning
+        st.sidebar.write(f"**Quality Score**: {quality_report['quality_score']:.1f}%")
+        
+        # Clean the data
+        df = clean_data(df, quality_report)
+        
+    except Exception as e:
+        st.sidebar.error(f"❌ Error: {e}")
+        df = None    
