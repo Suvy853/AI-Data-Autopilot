@@ -1,7 +1,8 @@
-pandas
-numpy
-scikit-learn
-plotly
-streamlit
-reportlab
-matplotlib 
+streamlit>=1.28
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+plotly>=5.17
+reportlab>=4.0
+matplotlib>=3.8
+altair<6
