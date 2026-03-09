@@ -5,6 +5,8 @@ A production-ready data analysis application that automatically cleans, analyzes
 Try the app now: https://ai-data-autopilot.streamlit.app/
 
 *No installation needed - upload your CSV and start analyzing!*
+<img width="1898" height="862" alt="image" src="https://github.com/user-attachments/assets/71a9f2dd-b728-46e4-9d28-89ebd568ad8e" />
+
 
 ## Project Overview
 AI Data Autopilot is an intelligent data analysis system that transforms raw CSV data into actionable business insights in minutes. It combines automated data engineering, statistical analysis, machine learning anomaly detection, and AI-generated business recommendations.
@@ -172,7 +174,6 @@ For machine learning engineers, the platform provides valuable insights that sup
 
 
 
-<img width="1898" height="862" alt="image" src="https://github.com/user-attachments/assets/0df55a35-d84b-4a11-963d-1d98e84263b4" />
 
 
 
