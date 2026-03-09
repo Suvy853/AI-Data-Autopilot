@@ -66,25 +66,37 @@ Your data flows through this intelligent pipeline:
 
 
 ## Anomaly Detection Methods
-Z-Score (Statistical Method)
-How it works:
+*Z-Score (Statistical Method)*
+**How it works:**
 
-Measures how many standard deviations a value is from the mean
-Formula: Z = (X - Mean) / Standard Deviation
-Threshold: |Z-Score| > 3 indicates outlier (99.7% confidence)
+1. Measures how many standard deviations a value is from the mean
+2. Formula: Z = (X - Mean) / Standard Deviation
+3. Threshold: |Z-Score| > 3 indicates outlier (99.7% confidence)
 
-Pros:
+**Pros:**
 
-Simple and interpretable
-Fast computation
-Good for normally distributed data
+4. Simple and interpretable
+5. Fast computation
+6. Good for normally distributed data
 
-Cons:
+**Cons:**
 
-Assumes normal distribution
-Sensitive to extreme outliers
-Doesn't account for multivariate patterns
+7. Assumes normal distribution
+8. Sensitive to extreme outliers
+9. Doesn't account for multivariate patterns
 
 Best for: Single metric anomalies, quick outlier detection
+
+
+
+
+
+
+
+
+
+
+
+
 
 
