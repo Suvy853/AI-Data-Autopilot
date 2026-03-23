@@ -1,142 +1,150 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from src.data_loader import load_csv, check_data_quality, clean_data
 from src.kpi_engine import detect_metric_columns, calculate_basic_kpis, calculate_trends, analyze_by_segment
-from src.anomaly import detect_statistical_outliers, detect_isolation_forest_outliers, find_category_anomalies
-from src.narrative_enhanced import (detect_important_segments, find_segment_anomalies, 
-                          generate_business_insights, generate_business_recommendations,
-                          format_anomalies_for_display)
+from src.anomaly import detect_statistical_outliers, detect_isolation_forest_outliers
+from src.narrative_enhanced import (detect_important_segments, 
+                                    generate_business_insights, 
+                                    generate_business_recommendations)
 from src.report import generate_pdf_report, export_kpis_to_csv, export_anomalies_to_csv, export_recommendations_to_csv
 
-
 # Page configuration
-st.set_page_config(page_title="AI Data Autopilot", layout="wide")
+st.set_page_config(page_title="AI Data Autopilot", layout="wide", initial_sidebar_state="expanded")
 
 # ============================================
 # HEADER
 # ============================================
 st.title("AI Data Autopilot")
-st.write("Intelligent data analysis: Upload → Clean → Analyze → Detect → Insights → Report")
+st.write("Executive Data Quality Dashboard - Understand your data before deep analysis")
 
 # ============================================
-# SIDEBAR - LOAD DATA FIRST
+# SIDEBAR - LOAD DATA
 # ============================================
 with st.sidebar:
     st.header("Load Data")
     
-    use_sample = st.sidebar.checkbox("Use Sample Data?", value=True, key="use_sample_data")
+    use_sample = st.checkbox("Use Sample Data?", value=True, key="use_sample_data")
     
     df = None
     df_original = None
+    quality_report = None
     
     if use_sample:
         try:
             df_original = load_csv("sample_data/subscription_data.csv")
             quality_report = check_data_quality(df_original)
-            st.sidebar.success("Loaded sample data")
             df = clean_data(df_original.copy(), quality_report)
+            st.success("Sample data loaded successfully")
         except FileNotFoundError:
-            st.sidebar.error("Sample data not found")
+            st.error("Sample data file not found")
     else:
-        uploaded_file = st.sidebar.file_uploader("Choose CSV file", type="csv", key="csv_uploader")
+        uploaded_file = st.file_uploader("Upload CSV file", type="csv", key="csv_uploader")
         if uploaded_file is not None:
             try:
                 df_original = pd.read_csv(uploaded_file)
                 quality_report = check_data_quality(df_original)
-                st.sidebar.success(f"Loaded {uploaded_file.name}")
                 df = clean_data(df_original.copy(), quality_report)
+                st.success(f"{uploaded_file.name} loaded successfully")
             except Exception as e:
-                st.sidebar.error(f"Error: {e}")
+                st.error(f"Error: {e}")
     
     # ============================================
-    # SIDEBAR - ARCHITECTURE PIPELINE
+    # SIDEBAR - NAVIGATION
     # ============================================
     st.sidebar.markdown("---")
-    st.sidebar.header("System Pipeline")
-    st.sidebar.markdown("""
-    **1. Data Ingestion**
-    Upload or sample data
-    
-    **2. Quality Assessment**
-    Check for issues
-    
-    **3. Auto Cleaning**
-    Fill, remove duplicates
-    
-    **4. Metric Detection**
-    Find KPIs, segments
-    
-    **5. Anomaly Detection**
-    Z-Score + Isolation Forest
-    
-    **6. Business Insights**
-    Segment analysis, growth drivers
-    
-    **7. AI Recommendations**
-    Claude-powered actions
-    
-    **8. PDF Reports**
-    Executive-ready documents
+    st.sidebar.header("Dashboard Sections")
+    st.sidebar.info("""
+    1. Data Overview
+    2. Data Cleaning
+    3. KPI Analysis
+    4. Segment Analysis
+    5. Anomaly Detection
+    6. Business Insights
+    7. Recommendations
+    8. Reports & Exports
     """)
 
 # ============================================
 # MAIN CONTENT
 # ============================================
 
-if df is not None and df_original is not None:
+if df is not None and df_original is not None and quality_report is not None:
     
     # ============================================
-    # DATA OVERVIEW
+    # SECTION 1: DATA OVERVIEW
     # ============================================
-    st.subheader(" DATA OVERVIEW")
+    st.header("Step 1: Data Overview")
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Rows", f"{len(df):,}")
+        st.metric("Total Records", f"{len(df):,}")
     with col2:
         st.metric("Columns", len(df.columns))
     with col3:
-        quality_score = check_data_quality(df)['quality_score']
+        quality_score = quality_report['quality_score']
         st.metric("Quality Score", f"{quality_score:.1f}%")
     with col4:
-        st.metric("File Size", f"{df.memory_usage(deep=True).sum() / 1024:.1f} KB")
+        st.metric("Data Size", f"{df.memory_usage(deep=True).sum() / 1024:.1f} KB")
+
+    # Quality assessment details
+    st.subheader("Data Quality Assessment")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        blank_cells = quality_report['blank_cells']
+        st.write(f"**Blank Cells:** {blank_cells:,}")
+        if blank_cells == 0:
+            st.success("No missing data")
+        else:
+            st.warning(f"{blank_cells} values need attention")
+    
+    with col2:
+        duplicates = quality_report['duplicate_rows']
+        st.write(f"**Duplicate Rows:** {duplicates}")
+        if duplicates == 0:
+            st.success("No duplicates")
+        else:
+            st.warning(f"{duplicates} duplicate rows detected")
+    
+    with col3:
+        st.write(f"**Data Issues:** {len(quality_report['issues'])}")
+        if len(quality_report['issues']) == 0:
+            st.success("No issues detected")
+        else:
+            for issue in quality_report['issues']:
+                st.info(issue)
 
     # ============================================
-    # DATA CLEANING
+    # SECTION 2: DATA CLEANING
     # ============================================
-    st.subheader("DATA CLEANING SUMMARY")
+    st.header("Step 2: Data Cleaning")
     
-    tab1, tab2, tab3 = st.tabs(["Cleaning Summary", "Before Cleaning", "After Cleaning"])
+    tab1, tab2, tab3 = st.tabs(["Summary", "Before", "After"])
     
     with tab1:
-        st.write("### Data Quality Improvement")
+        st.subheader("Cleaning Applied")
         
         original_blanks = df_original.isnull().sum().sum()
         cleaned_blanks = df.isnull().sum().sum()
         blanks_removed = original_blanks - cleaned_blanks
         
-        original_duplicates = len(df_original) - len(df_original.drop_duplicates())
-        cleaned_duplicates = len(df) - len(df.drop_duplicates())
-        duplicates_removed = original_duplicates - cleaned_duplicates
+        original_dups = len(df_original) - len(df_original.drop_duplicates())
+        cleaned_dups = len(df) - len(df.drop_duplicates())
+        dups_removed = original_dups - cleaned_dups
         
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.metric("Blank Cells Removed", f"{blanks_removed:,}", 
-                     delta=f"-{blanks_removed:,}" if blanks_removed > 0 else "Clean")
+            st.metric("Blanks Filled", blanks_removed)
         with col2:
-            st.metric("Duplicates Removed", f"{duplicates_removed:,}",
-                     delta=f"-{duplicates_removed:,}" if duplicates_removed > 0 else "Clean")
+            st.metric("Duplicates Removed", dups_removed)
         with col3:
             quality_before = check_data_quality(df_original)['quality_score']
-            quality_after = check_data_quality(df)['quality_score']
-            quality_improvement = quality_after - quality_before
-            st.metric("Quality Improvement", f"{quality_after:.1f}%",
-                     delta=f"+{quality_improvement:.1f}%")
-        with col4:
-            row_retention = (len(df) / len(df_original)) * 100
-            st.metric("Data Retained", f"{row_retention:.1f}%")
+            quality_after = quality_report['quality_score']
+            st.metric("Quality Improvement", f"+{quality_after - quality_before:.1f}%")
     
     with tab2:
         st.write("### Original Data (Before Cleaning)")
@@ -147,9 +155,9 @@ if df is not None and df_original is not None:
         st.dataframe(df.head(10), use_container_width=True)
 
     # ============================================
-    # KPI ANALYSIS
+    # SECTION 3: KPI ANALYSIS
     # ============================================
-    st.subheader("KEY PERFORMANCE INDICATORS (KPIs) ANALYSIS")
+    st.header("Step 3: KPI Analysis")
     
     try:
         metrics = detect_metric_columns(df)
@@ -157,22 +165,25 @@ if df is not None and df_original is not None:
         if metrics:
             kpis = calculate_basic_kpis(df, metrics)
             
-            st.write("### Auto-Detected Metrics (KPIs)")
-            st.write(f"Found {len(kpis)} numeric columns for analysis")
+            st.write(f"**Auto-Detected {len(kpis)} Key Metrics**")
             
-            kpi_col1, kpi_col2 = st.columns(2)
+            col1, col2 = st.columns(2)
             
-            with kpi_col1:
-                st.write("### KPI Summary Table")
+            with col1:
+                st.subheader("KPI Summary")
                 kpi_df = pd.DataFrame(kpis).T[['average', 'sum', 'min', 'max']]
                 st.dataframe(kpi_df, use_container_width=True)
             
-            with kpi_col2:
-                st.write("### KPI Comparison")
+            with col2:
+                st.subheader("KPI Comparison - Bar Chart")
                 kpi_averages = {col: values['average'] for col, values in kpis.items()}
-                fig_bar = px.bar(x=list(kpi_averages.keys()), y=list(kpi_averages.values()),
-                                labels={'x': 'Metric', 'y': 'Average Value'},
-                                title="Average by Metric", color_continuous_scale='Blues')
+                fig_bar = px.bar(
+                    x=list(kpi_averages.keys()),
+                    y=list(kpi_averages.values()),
+                    labels={'x': 'Metric', 'y': 'Average Value'},
+                    title="Average Values by Metric",
+                    color_continuous_scale='Blues'
+                )
                 fig_bar.update_layout(height=400, xaxis_tickangle=-45)
                 st.plotly_chart(fig_bar, use_container_width=True)
         else:
@@ -181,18 +192,18 @@ if df is not None and df_original is not None:
         st.error(f"Error in KPI analysis: {e}")
 
     # ============================================
-    # SEGMENT ANALYSIS
+    # SECTION 4: SEGMENT ANALYSIS
     # ============================================
-    st.subheader("SEGMENT ANALYSIS")
+    st.header("Step 4: Segment Performance Analysis")
     
     try:
         segments = detect_important_segments(df, metrics if metrics else {})
         
         if segments:
-            st.write("### Key Segments Detected")
+            st.write("**Auto-Detected Customer Segments**")
             
             for segment_col, segment_data in segments.items():
-                st.write(f"#### By {segment_col}")
+                st.subheader(f"Segment: {segment_col}")
                 
                 segment_display = []
                 for seg_name, seg_info in segment_data.items():
@@ -202,35 +213,39 @@ if df is not None and df_original is not None:
                         'Percentage': f"{seg_info['percentage']:.1f}%"
                     })
                 
-                segment_df = pd.DataFrame(segment_display)
-                st.dataframe(segment_df, use_container_width=True)
+                segment_df = pd.DataFrame(segment_display).sort_values('Count', ascending=False)
                 
-                fig_pie = px.pie(values=[s['Count'] for s in segment_display],
-                               names=[s['Segment'] for s in segment_display],
-                               title=f"Distribution by {segment_col}")
-                st.plotly_chart(fig_pie, use_container_width=True)
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.dataframe(segment_df, use_container_width=True)
+                
+                with col2:
+                    # Bar chart instead of pie chart
+                    fig_bar = px.bar(
+                        segment_df,
+                        x='Segment',
+                        y='Count',
+                        title=f"Segment Distribution: {segment_col}",
+                        labels={'Count': 'Number of Records'},
+                        color='Count',
+                        color_continuous_scale='Viridis'
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("No clear segments detected in this dataset")
     except Exception as e:
         st.error(f"Error in segment analysis: {e}")
 
     # ============================================
-    # ANOMALY DETECTION
+    # SECTION 5: ANOMALY DETECTION
     # ============================================
-    st.subheader("ANOMALY DETECTION")
+    st.header("Step 5: Anomaly Detection (Quality Check)")
     
-    st.write("""
-    ### Anomaly Detection Methods Explained
-    
-    **Method 1: Z-Score (Statistical)**
-    - Measures how far from average (in standard deviations)
-    - Threshold: >3 is outlier (99.7% confidence)
-    - Best for: Single metric anomalies, normally distributed data
-    
-    **Method 2: Isolation Forest (Machine Learning)**
-    - Isolates anomalies as patterns different from normal
-    - No assumptions about data distribution
-    - Best for: Complex, multivariate anomalies
+    st.info("""
+    Two Detection Methods:
+    - Z-Score: Statistical outliers (greater than 3 standard deviations from mean)
+    - Isolation Forest: ML-based multivariate anomalies
     """)
     
     try:
@@ -238,12 +253,12 @@ if df is not None and df_original is not None:
         
         if numeric_cols:
             anomaly_tab1, anomaly_tab2, anomaly_tab3 = st.tabs(
-                ["Statistical (Z-Score)", "ML-Based (Isolation Forest)", "Summary"]
+                ["Z-Score Analysis", "ML-Based Analysis", "Summary"]
             )
             
             # Z-Score Anomalies
             with anomaly_tab1:
-                st.write("### Statistical Outliers (Z-Score Method)")
+                st.subheader("Statistical Outliers (Z-Score)")
                 
                 all_z_anomalies = []
                 for col in numeric_cols[:3]:
@@ -253,7 +268,7 @@ if df is not None and df_original is not None:
                 
                 if all_z_anomalies:
                     z_anomalies = pd.concat(all_z_anomalies, ignore_index=True)
-                    st.write(f"Found {len(z_anomalies)} statistical outliers")
+                    st.warning(f"Found {len(z_anomalies)} statistical outliers")
                     
                     z_display = z_anomalies.copy()
                     if 'z_score' in z_display.columns:
@@ -261,81 +276,106 @@ if df is not None and df_original is not None:
                             lambda x: 'Critical' if abs(x) > 4 else 'High' if abs(x) > 3 else 'Medium'
                         )
                     
-                    st.dataframe(z_display.head(20), use_container_width=True)
+                    st.dataframe(z_display.head(15), use_container_width=True)
+                    
+                    # Histogram of z-scores
+                    fig_hist = px.histogram(
+                        z_display,
+                        x='z_score',
+                        nbins=30,
+                        title='Distribution of Z-Scores',
+                        labels={'z_score': 'Z-Score Value', 'count': 'Frequency'}
+                    )
+                    st.plotly_chart(fig_hist, use_container_width=True)
                 else:
                     st.success("No statistical outliers detected")
             
             # ML Anomalies
             with anomaly_tab2:
-                st.write("### ML-Based Anomalies (Isolation Forest)")
+                st.subheader("ML-Based Anomalies (Isolation Forest)")
                 
                 anomalies_ml = detect_isolation_forest_outliers(df, numeric_cols)
                 
                 if len(anomalies_ml) > 0:
-                    st.warning(f"Found {len(anomalies_ml)} anomalous records")
-                    
-                    anomaly_stats = {
-                        'Normal Records': len(df) - len(anomalies_ml),
-                        'Anomalous Records': len(anomalies_ml)
-                    }
+                    anomaly_pct = (len(anomalies_ml) / len(df)) * 100
+                    st.warning(f"Found {len(anomalies_ml)} anomalous records ({anomaly_pct:.2f}%)")
                     
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        fig_pie = px.pie(values=list(anomaly_stats.values()),
-                                       names=list(anomaly_stats.keys()),
-                                       title="Data Distribution")
-                        st.plotly_chart(fig_pie, use_container_width=True)
+                        # Horizontal bar chart instead of pie
+                        anomaly_stats = {
+                            'Normal': len(df) - len(anomalies_ml),
+                            'Anomalous': len(anomalies_ml)
+                        }
+                        fig_hbar = px.bar(
+                            x=list(anomaly_stats.values()),
+                            y=list(anomaly_stats.keys()),
+                            orientation='h',
+                            title="Data Classification",
+                            labels={'x': 'Count', 'y': 'Type'},
+                            color=list(anomaly_stats.keys()),
+                            color_discrete_map={'Normal': '#3498db', 'Anomalous': '#e74c3c'}
+                        )
+                        st.plotly_chart(fig_hbar, use_container_width=True)
                     
                     with col2:
-                        anomaly_pct = (len(anomalies_ml) / len(df) * 100)
-                        if anomaly_pct < 2:
-                            st.success(f"Excellent: Only {anomaly_pct:.2f}% anomalies")
+                        if anomaly_pct < 1:
+                            st.success(f"Excellent: {anomaly_pct:.2f}% anomalies")
                         elif anomaly_pct < 5:
                             st.info(f"Good: {anomaly_pct:.2f}% anomalies")
                         else:
                             st.warning(f"Needs attention: {anomaly_pct:.2f}% anomalies")
                     
-                    st.write("### Anomalous Records (sortable)")
-                    anomaly_display = anomalies_ml.copy()
-                    st.dataframe(anomaly_display.head(20), use_container_width=True)
+                    st.dataframe(anomalies_ml.head(15), use_container_width=True)
                 else:
                     st.success("No ML-based anomalies detected")
             
             # Summary
             with anomaly_tab3:
-                st.write("### Anomaly Detection Summary")
+                st.subheader("Anomaly Detection Summary")
                 
-                summary_col1, summary_col2, summary_col3 = st.columns(3)
+                z_count = len(all_z_anomalies[0]) if all_z_anomalies else 0
+                ml_count = len(anomalies_ml) if not anomalies_ml.empty else 0
                 
-                with summary_col1:
-                    z_count = len(all_z_anomalies[0]) if all_z_anomalies else 0
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
                     st.metric("Z-Score Anomalies", z_count)
                 
-                with summary_col2:
-                    ml_count = len(anomalies_ml)
+                with col2:
                     st.metric("ML Anomalies", ml_count)
                 
-                with summary_col3:
-                    total_anomalies = z_count + ml_count
-                    st.metric("Total Flagged", total_anomalies)
+                with col3:
+                    st.metric("Total Flagged", z_count + ml_count)
                 
-                st.write("### Method Comparison")
-                comparison = pd.DataFrame({
-                    'Method': ['Z-Score', 'Isolation Forest'],
-                    'Anomalies Found': [z_count, ml_count],
-                    'Type': ['Statistical', 'ML-Based'],
-                    'Best For': ['Single metrics', 'Complex patterns']
-                })
-                st.dataframe(comparison, use_container_width=True)
+                # Scatter plot showing anomalies vs normals
+                if numeric_cols and len(numeric_cols) >= 2:
+                    col1_name = numeric_cols[0]
+                    col2_name = numeric_cols[1]
+                    
+                    plot_df = df[[col1_name, col2_name]].copy()
+                    plot_df['Type'] = 'Normal'
+                    if not anomalies_ml.empty:
+                        plot_df.loc[anomalies_ml.index, 'Type'] = 'Anomalous'
+                    
+                    fig_scatter = px.scatter(
+                        plot_df,
+                        x=col1_name,
+                        y=col2_name,
+                        color='Type',
+                        title=f"Anomaly Distribution: {col1_name} vs {col2_name}",
+                        color_discrete_map={'Normal': '#3498db', 'Anomalous': '#e74c3c'}
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
     
     except Exception as e:
         st.error(f"Error in anomaly detection: {e}")
 
     # ============================================
-    # BUSINESS INSIGHTS
+    # SECTION 6: BUSINESS INSIGHTS
     # ============================================
-    st.subheader("BUSINESS INSIGHTS & AI RECOMMENDATIONS")
+    st.header("Step 6: Executive Insights")
     
     try:
         metrics = detect_metric_columns(df)
@@ -345,97 +385,92 @@ if df is not None and df_original is not None:
         anomalies_ml = detect_isolation_forest_outliers(df, numeric_cols) if numeric_cols else pd.DataFrame()
         segments = detect_important_segments(df, metrics if metrics else {})
         
+        # Generate business insights
         business_insights = generate_business_insights(df, kpis, trends, anomalies_ml, segments)
         
-        insight_col1, insight_col2 = st.columns(2)
+        col1, col2 = st.columns(2)
         
-        with insight_col1:
-            st.write("### Business Analysis")
+        with col1:
+            st.subheader("Key Findings")
             st.markdown(business_insights)
         
-        with insight_col2:
-            st.write("### Recommendations")
+        with col2:
+            st.subheader("Recommendations")
             recommendations = generate_business_recommendations(kpis, trends, anomalies_ml, df, segments)
             
             if recommendations:
                 for i, rec in enumerate(recommendations[:5], 1):
-                    color = '🔴' if rec['priority'] == 'High' else '🟡' if rec['priority'] == 'Medium' else '🟢'
-                    st.write(f"**{color} {i}. {rec['action']}**")
-                    st.write(f"Evidence: {rec['evidence']}")
-                    st.write(f"Impact: {rec['impact']}")
-                    st.write(f"Metric: {rec['metric']}")
-                    st.write("---")
-        
-        if recommendations:
-            st.write("### All Recommendations (Sortable)")
-            rec_display = pd.DataFrame([
-                {
-                    'Priority': rec['priority'],
-                    'Action': rec['action'],
-                    'Evidence': rec['evidence'],
-                    'Impact': rec['impact'],
-                    'Segment': rec.get('segment', 'General')
-                }
-                for rec in recommendations
-            ])
-            st.dataframe(rec_display, use_container_width=True)
+                    priority_color = "red" if rec['priority'] == "High" else "orange" if rec['priority'] == "Medium" else "green"
+                    st.write(f"**[{rec['priority']} Priority {i}]**")
+                    st.write(f"**Action:** {rec['action']}")
+                    st.write(f"**Evidence:** {rec['evidence']}")
+                    st.write(f"**Impact:** {rec['impact']}")
+                    st.divider()
     
     except Exception as e:
         st.error(f"Error generating insights: {e}")
 
     # ============================================
-    # REPORT GENERATION
+    # SECTION 7: EXPORT REPORTS
     # ============================================
-    st.subheader("DOWNLOADABLE REPORTS & DATA EXPORTS")
+    st.header("Step 8: Export Reports")
     
     try:
-        metrics = detect_metric_columns(df)
-        kpis = calculate_basic_kpis(df, metrics) if metrics else {}
-        trends = calculate_trends(df, metrics) if metrics else {}
-        numeric_cols = list(metrics.keys()) if metrics else []
-        anomalies_ml = detect_isolation_forest_outliers(df, numeric_cols) if numeric_cols else pd.DataFrame()
-        narrative = generate_business_insights(df, kpis, trends, anomalies_ml, 
-                                             detect_important_segments(df, metrics if metrics else {}))
-        recommendations = generate_business_recommendations(kpis, trends, anomalies_ml, df,
-                                                          detect_important_segments(df, metrics if metrics else {}))
-        
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
-            st.write("### PDF Executive Report")
-            st.write("Professional report with charts and recommendations")
-            
-            pdf_report = generate_pdf_report(df, kpis, trends, anomalies_ml, narrative, recommendations)
-            
-            st.download_button(
-                label="Download PDF Report",
-                data=pdf_report,
-                file_name="executive_report.pdf",
-                mime="application/pdf",
-                key="pdf_download"
-            )
+            st.subheader("PDF Report")
+            try:
+                pdf_report = generate_pdf_report(df, kpis, trends, anomalies_ml, business_insights, recommendations)
+                st.download_button(
+                    label="Download PDF Report",
+                    data=pdf_report,
+                    file_name="executive_report.pdf",
+                    mime="application/pdf",
+                    key="pdf_download"
+                )
+            except Exception as e:
+                st.error(f"PDF error: {e}")
         
         with col2:
-            st.write("### CSV Data Exports")
-            
-            export_option = st.selectbox("Select export type",
-                ["KPIs (CSV)", "Anomalies (CSV)", "Recommendations (CSV)"],
-                key="export_selectbox")
-            
-            if export_option == "KPIs (CSV)":
-                csv_data = export_kpis_to_csv(kpis)
-                st.download_button("Download KPIs", csv_data, "kpis.csv", "text/csv", key="kpi_csv")
-            elif export_option == "Anomalies (CSV)":
-                csv_data = export_anomalies_to_csv(anomalies_ml)
-                st.download_button("Download Anomalies", csv_data, "anomalies.csv", "text/csv", key="anomaly_csv")
-            else:
-                csv_data = export_recommendations_to_csv(recommendations)
-                st.download_button("Download Recommendations", csv_data, "recommendations.csv", "text/csv", key="rec_csv")
+            st.subheader("KPIs (CSV)")
+            try:
+                csv_kpis = export_kpis_to_csv(kpis)
+                st.download_button(
+                    label="Download KPIs",
+                    data=csv_kpis,
+                    file_name="kpis.csv",
+                    mime="text/csv",
+                    key="kpi_csv"
+                )
+            except Exception as e:
+                st.error(f"CSV error: {e}")
+        
+        with col3:
+            st.subheader("Anomalies (CSV)")
+            try:
+                csv_anomalies = export_anomalies_to_csv(anomalies_ml)
+                st.download_button(
+                    label="Download Anomalies",
+                    data=csv_anomalies,
+                    file_name="anomalies.csv",
+                    mime="text/csv",
+                    key="anomaly_csv"
+                )
+            except Exception as e:
+                st.error(f"CSV error: {e}")
     
     except Exception as e:
-        st.error(f"Error generating reports: {e}")
-
-
+        st.error(f"Error in report generation: {e}")
 
 else:
-    st.info("Load data to get started (check 'Use Sample Data?' or upload CSV)")
+    st.info("Load data from the sidebar to get started")
+    st.write("""
+    AI Data Autopilot helps executives understand their data:
+    - Quality assessment
+    - KPI auto-detection
+    - Anomaly detection (2 methods)
+    - Business insights
+    - Executive recommendations
+    - Professional PDF reports
+    """)

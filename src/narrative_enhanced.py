@@ -2,286 +2,374 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List
 
-
 def detect_important_segments(df: pd.DataFrame, metrics: Dict) -> Dict:
     """
-    Auto-detect important segments (categories, groups) in the data.
-    
-    Returns segments with segment name, metrics, and patterns.
+    Auto-detect important segments (categorical columns with reasonable cardinality).
+    Works with any B2B dataset.
     """
-    
     segments = {}
+    
+    # Find categorical columns
     categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
     
-    if not categorical_cols:
-        return segments
-    
-    metric_cols = list(metrics.keys()) if metrics else []
-    
-    for cat_col in categorical_cols[:3]:
-        try:
-            unique_count = df[cat_col].nunique()
-            
-            if 2 <= unique_count <= 20:
-                segment_data = {}
-                
-                for segment_value in df[cat_col].unique()[:5]:
-                    segment_df = df[df[cat_col] == segment_value]
-                    
-                    if len(segment_df) > 0:
-                        segment_info = {
-                            'count': len(segment_df),
-                            'percentage': (len(segment_df) / len(df) * 100),
-                            'metrics': {}
-                        }
-                        
-                        for metric_col in metric_cols[:3]:
-                            if metric_col in segment_df.columns:
-                                segment_info['metrics'][metric_col] = {
-                                    'average': segment_df[metric_col].mean(),
-                                    'total': segment_df[metric_col].sum(),
-                                    'min': segment_df[metric_col].min(),
-                                    'max': segment_df[metric_col].max()
-                                }
-                        
-                        segment_data[str(segment_value)] = segment_info
-                
-                if segment_data:
-                    segments[cat_col] = segment_data
-        
-        except Exception as e:
+    for col in categorical_cols:
+        # Skip ID columns
+        if 'id' in col.lower() or '_key' in col.lower() or 'account' in col.lower():
             continue
+        
+        # Only include columns with 2-20 unique values (true segments)
+        unique_count = df[col].nunique()
+        if 2 <= unique_count <= 20:
+            segment_data = {}
+            total_records = len(df)
+            
+            for segment_value in df[col].unique():
+                segment_count = len(df[df[col] == segment_value])
+                segment_percentage = (segment_count / total_records) * 100
+                
+                segment_data[segment_value] = {
+                    'count': segment_count,
+                    'percentage': segment_percentage
+                }
+            
+            segments[col] = segment_data
     
     return segments
 
 
-def find_segment_anomalies(df: pd.DataFrame, anomalies: pd.DataFrame, 
-                          categorical_cols: List[str]) -> Dict:
-    """
-    Identify which segments have the most anomalies.
-    
-    Returns segments with anomaly counts and percentages.
-    """
-    
-    segment_anomalies = {}
-    
-    if len(anomalies) == 0:
-        return segment_anomalies
-    
-    for cat_col in categorical_cols[:3]:
-        try:
-            if cat_col in df.columns:
-                total_by_segment = df[cat_col].value_counts()
-                anomaly_by_segment = anomalies[cat_col].value_counts()
-                
-                segment_info = {}
-                for segment in anomaly_by_segment.index[:5]:
-                    total = total_by_segment.get(segment, 0)
-                    anomaly_count = anomaly_by_segment.get(segment, 0)
-                    
-                    if total > 0:
-                        anomaly_pct = (anomaly_count / total * 100)
-                        segment_info[str(segment)] = {
-                            'anomalies': int(anomaly_count),
-                            'total_records': int(total),
-                            'anomaly_percentage': anomaly_pct
-                        }
-                
-                if segment_info:
-                    segment_anomalies[cat_col] = segment_info
-        
-        except Exception as e:
-            continue
-    
-    return segment_anomalies
-
-
 def generate_business_insights(df: pd.DataFrame, kpis: Dict, trends: Dict, 
-                              anomalies: pd.DataFrame, segments: Dict) -> str:
+                               anomalies: pd.DataFrame, segments: Dict) -> str:
     """
-    Generate business-focused insights instead of just technical facts.
-    
-    Focuses on:
-    - Segment performance
-    - Growth drivers
-    - Problem areas
-    - Opportunities
+    Generate PURE PROSE business insights - NO special characters, NO markdown, NO bullets.
+    Each insight is a flowing paragraph of professional business analysis.
     """
+    insights = []
     
-    insights = "## Key Business Insights\n\n"
+    # ============================================
+    # DATA QUALITY ASSESSMENT
+    # ============================================
+    total_records = len(df)
+    quality_percentage = 100 - (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
     
-    # Overall performance insight
-    insights += "### Overall Performance\n"
+    insights.append("Data Quality Assessment")
+    insights.append("")
+    
+    if quality_percentage >= 95:
+        insights.append("The dataset exhibits excellent quality with a score of {:.1f} percent. Data is clean, reliable, and ready for comprehensive analysis. No significant quality issues were detected during assessment.".format(quality_percentage))
+    elif quality_percentage >= 80:
+        insights.append("The dataset demonstrates good quality with a score of {:.1f} percent. Data has been appropriately cleaned and is suitable for analytical work. Minor quality issues were identified and addressed.".format(quality_percentage))
+    else:
+        insights.append("The dataset requires attention with a quality score of {:.1f} percent. Significant data inconsistencies were found and addressed during the cleaning process. Proceed with enhanced validation.".format(quality_percentage))
+    
+    # ============================================
+    # KEY PERFORMANCE INDICATORS
+    # ============================================
     if kpis:
-        metric_names = list(kpis.keys())[:3]
-        insights += f"Analyzed {len(df):,} records across {len(metric_names)} key metrics. "
+        insights.append("")
+        insights.append("")
+        insights.append("Key Performance Indicators")
+        insights.append("")
         
-        growth_metrics = sum(1 for trend in trends.values() 
-                            if trend.get('total_growth_percent', 0) > 0)
-        insights += f"{growth_metrics} metrics show positive growth trends. "
-        insights += "\n\n"
+        # Find top metrics by sum
+        top_metrics = sorted(kpis.items(), key=lambda x: x[1].get('sum', 0), reverse=True)[:3]
+        metric_names = []
+        for name, _ in top_metrics:
+            metric_names.append(name.replace('_', ' ').title())
+        
+        metrics_text = "The analysis identified {} key performance indicators in the dataset. Primary metrics include {}. These metrics represent the core quantitative measures of business performance.".format(
+            len(kpis),
+            ", ".join(metric_names)
+        )
+        insights.append(metrics_text)
     
-    # Segment performance insights
+    # ============================================
+    # SEGMENT ANALYSIS
+    # ============================================
     if segments:
-        insights += "### Segment Performance\n"
-        for segment_col, segment_data in list(segments.items())[:2]:
-            insights += f"**By {segment_col}:**\n"
-            
-            best_segment = max(segment_data.items(), 
-                             key=lambda x: len(x[1].get('metrics', {})))
-            if best_segment:
-                insights += f"- {best_segment[0]} is the primary segment ({best_segment[1]['percentage']:.1f}% of data)\n"
-            
-            insights += "\n"
-    
-    # Anomaly insights with business context
-    if len(anomalies) > 0:
-        anomaly_pct = (len(anomalies) / len(df) * 100)
-        insights += "### Data Quality & Anomalies\n"
+        insights.append("")
+        insights.append("")
+        insights.append("Segment Analysis")
+        insights.append("")
         
-        if anomaly_pct < 2:
-            insights += f"Excellent data quality: Only {anomaly_pct:.2f}% anomalous records detected. "
-            insights += "Data is highly reliable for decision-making.\n\n"
-        elif anomaly_pct < 5:
-            insights += f"Good data quality: {anomaly_pct:.2f}% anomalous records detected. "
-            insights += "Minor data quality issues that should be monitored.\n\n"
-        else:
-            insights += f"Attention needed: {anomaly_pct:.2f}% anomalous records detected. "
-            insights += "Investigate root causes and implement data quality improvements.\n\n"
+        segment_descriptions = []
+        
+        for segment_col, segment_data in segments.items():
+            # Calculate variation
+            counts = [s['count'] for s in segment_data.values()]
+            
+            largest_segment = max(segment_data.items(), key=lambda x: x[1]['count'])
+            smallest_segment = min(segment_data.items(), key=lambda x: x[1]['count'])
+            
+            size_ratio = largest_segment[1]['count'] / smallest_segment[1]['count']
+            
+            col_name = segment_col.replace('_', ' ').title()
+            largest_name = largest_segment[0]
+            smallest_name = smallest_segment[0]
+            largest_pct = largest_segment[1]['percentage']
+            smallest_pct = smallest_segment[1]['percentage']
+            
+            if size_ratio > 3:
+                balance_text = "shows high imbalance with a {} times variation between largest and smallest segments".format(round(size_ratio, 1))
+            else:
+                balance_text = "demonstrates balanced distribution across segments"
+            
+            segment_desc = "The {} segment {} with {} representing {:.1f} percent (largest) and {} at {:.1f} percent (smallest).".format(
+                col_name,
+                balance_text,
+                largest_name,
+                largest_pct,
+                smallest_name,
+                smallest_pct
+            )
+            segment_descriptions.append(segment_desc)
+        
+        segments_text = " ".join(segment_descriptions)
+        insights.append(segments_text)
     
-    # Growth opportunities
+    # ============================================
+    # TREND ANALYSIS
+    # ============================================
     if trends:
-        insights += "### Growth Opportunities\n"
-        positive_trends = [m for m, t in trends.items() 
-                          if t.get('total_growth_percent', 0) > 10]
-        if positive_trends:
-            insights += f"Strong growth identified in: {', '.join(positive_trends[:3])}. "
-            insights += "Consider increasing focus on these areas.\n\n"
+        insights.append("")
+        insights.append("")
+        insights.append("Growth and Trend Analysis")
+        insights.append("")
+        
+        growth_metrics = []
+        decline_metrics = []
+        stable_metrics = []
+        
+        for metric, trend_data in trends.items():
+            growth_pct = trend_data['total_growth_percent']
+            metric_display = metric.replace('_', ' ').title()
+            
+            if growth_pct > 10:
+                growth_metrics.append((metric_display, growth_pct))
+            elif growth_pct < -10:
+                decline_metrics.append((metric_display, growth_pct))
+            else:
+                stable_metrics.append((metric_display, growth_pct))
+        
+        trend_descriptions = []
+        
+        if growth_metrics:
+            growth_text = "Growing metrics include {} showing positive momentum.".format(
+                ", ".join(["{} at {:.1f} percent growth".format(m, g) for m, g in sorted(growth_metrics, key=lambda x: x[1], reverse=True)])
+            )
+            trend_descriptions.append(growth_text)
+        
+        if decline_metrics:
+            decline_text = "Declining metrics include {} requiring attention and investigation.".format(
+                ", ".join(["{} at {:.1f} percent decline".format(m, abs(d)) for m, d in sorted(decline_metrics, key=lambda x: x[1])])
+            )
+            trend_descriptions.append(decline_text)
+        
+        if stable_metrics:
+            stable_metric_names = ", ".join([m for m, _ in stable_metrics[:3]])
+            stable_text = "Stable metrics including {} demonstrate consistent performance.".format(stable_metric_names)
+            trend_descriptions.append(stable_text)
+        
+        trends_text = " ".join(trend_descriptions)
+        insights.append(trends_text)
     
-    # Risk areas
-    if len(anomalies) > 0:
-        insights += "### Areas Requiring Attention\n"
-        insights += f"- {len(anomalies):,} anomalous records need investigation\n"
-        insights += f"- Review data cleaning and quality processes\n"
-        insights += "- Implement additional validation rules\n\n"
+    # ============================================
+    # ANOMALY ASSESSMENT
+    # ============================================
+    if anomalies is not None and not anomalies.empty:
+        anomaly_pct = (len(anomalies) / len(df)) * 100
+        
+        insights.append("")
+        insights.append("")
+        insights.append("Data Anomalies and Outliers")
+        insights.append("")
+        
+        if anomaly_pct < 1:
+            anomaly_text = "Anomaly detection identified {} anomalous records representing {:.2f} percent of the dataset. The low anomaly rate indicates high data reliability and consistency across the dataset.".format(len(anomalies), anomaly_pct)
+        elif anomaly_pct < 5:
+            anomaly_text = "Anomaly detection identified {} anomalous records representing {:.2f} percent of the dataset. The moderate anomaly rate is acceptable for most business applications. These records deviate from expected patterns and may warrant further investigation to understand underlying causes.".format(len(anomalies), anomaly_pct)
+        else:
+            anomaly_text = "Anomaly detection identified {} anomalous records representing {:.2f} percent of the dataset. The elevated anomaly rate suggests data quality issues that should be addressed before proceeding with advanced analytical work.".format(len(anomalies), anomaly_pct)
+        
+        insights.append(anomaly_text)
+    else:
+        insights.append("")
+        insights.append("")
+        insights.append("Data Quality Assessment")
+        insights.append("")
+        insights.append("No significant anomalies were detected. The dataset appears consistent with expected patterns, indicating reliable data quality suitable for analytical applications.")
     
-    return insights
+    # ============================================
+    # EXECUTIVE READINESS
+    # ============================================
+    insights.append("")
+    insights.append("")
+    insights.append("Executive Readiness Summary")
+    insights.append("")
+    
+    readiness_score = 0
+    if quality_percentage >= 90:
+        readiness_score += 30
+    elif quality_percentage >= 80:
+        readiness_score += 20
+    else:
+        readiness_score += 10
+    
+    if trends and any(abs(t['total_growth_percent']) > 0 for t in trends.values()):
+        readiness_score += 25
+    else:
+        readiness_score += 10
+    
+    if anomalies is None or len(anomalies) < len(df) * 0.05:
+        readiness_score += 25
+    else:
+        readiness_score += 10
+    
+    if segments:
+        readiness_score += 20
+    else:
+        readiness_score += 10
+    
+    if readiness_score >= 80:
+        insights.append("Status: Ready for Analysis. The dataset demonstrates sufficient quality and structure to support advanced analytical work. Data quality and organizational characteristics are conducive to comprehensive business analytics.")
+    elif readiness_score >= 60:
+        insights.append("Status: Conditionally Ready. The dataset is usable for analysis with consideration of identified data characteristics. Enhanced validation and monitoring during analytical work is recommended.")
+    else:
+        insights.append("Status: Needs Preparation. The dataset requires additional work before undertaking advanced analytical projects. Address identified data quality issues before proceeding.")
+    
+    return "\n".join(insights)
 
 
-def generate_business_recommendations(kpis: Dict, trends: Dict, 
-                                     anomalies: pd.DataFrame, df: pd.DataFrame,
-                                     segments: Dict) -> List[Dict]:
+def generate_business_recommendations(kpis: Dict, trends: Dict, anomalies: pd.DataFrame, 
+                                      df: pd.DataFrame, segments: Dict) -> List[Dict]:
     """
-    Generate business-focused recommendations with evidence.
-    
-    Each recommendation includes:
-    - Action (what to do)
-    - Priority (High/Medium/Low)
-    - Evidence (why)
-    - Impact (business benefit)
-    - Segment (where applicable)
+    Generate recommendations based on actual data patterns.
+    Pure prose descriptions, NO special characters, NO markdown.
     """
-    
     recommendations = []
     
-    # Recommendation 1: Data Quality
-    anomaly_pct = (len(anomalies) / len(df) * 100) if len(df) > 0 else 0
-    if anomaly_pct > 5:
-        recommendations.append({
-            'priority': 'High',
-            'action': 'Implement data quality improvements and validation rules',
-            'evidence': f'{anomaly_pct:.2f}% of records are anomalous, indicating potential data issues',
-            'impact': 'Ensure data reliability, improve decision-making accuracy, reduce false insights',
-            'segment': 'Data Operations',
-            'metric': f'{len(anomalies):,} anomalies detected'
-        })
-    
-    # Recommendation 2: Segment Focus
-    if segments:
-        best_segment_col = list(segments.keys())[0] if segments else None
-        if best_segment_col and segments[best_segment_col]:
-            best_segment = max(segments[best_segment_col].items(), 
-                             key=lambda x: x[1].get('percentage', 0))
+    # ============================================
+    # ANOMALY-BASED RECOMMENDATIONS
+    # ============================================
+    if anomalies is not None and not anomalies.empty:
+        anomaly_pct = (len(anomalies) / len(df)) * 100
+        
+        if anomaly_pct > 5:
             recommendations.append({
                 'priority': 'High',
-                'action': f'Prioritize growth in {best_segment[0]} segment',
-                'evidence': f'{best_segment[1]["percentage"]:.1f}% of customer base, highest concentration',
-                'impact': 'Focus resources on highest value segment, maximize ROI',
-                'segment': best_segment_col,
-                'metric': f'{best_segment[1]["count"]:,} records'
+                'action': 'Investigate data collection and entry processes for potential improvements',
+                'evidence': '{} anomalous records detected, representing {:.1f} percent of the dataset'.format(len(anomalies), anomaly_pct),
+                'impact': 'Prevents corrupted or unreliable data from influencing business decisions',
+                'metric': 'Data Quality',
+                'segment': 'General'
             })
-    
-    # Recommendation 3: Growth Metrics
-    if trends:
-        growth_metrics = [(m, t['total_growth_percent']) for m, t in trends.items() 
-                         if t.get('total_growth_percent', 0) > 0]
-        if growth_metrics:
-            top_growth = max(growth_metrics, key=lambda x: x[1])
-            recommendations.append({
-                'priority': 'High',
-                'action': f'Accelerate investment in {top_growth[0]} (top growth driver)',
-                'evidence': f'{top_growth[1]:.1f}% growth identified, strongest performer',
-                'impact': 'Capitalize on momentum, increase market share, boost revenue',
-                'segment': 'Strategic',
-                'metric': f'{top_growth[1]:.1f}% growth rate'
-            })
-    
-    # Recommendation 4: Underperforming Areas
-    if trends:
-        negative_trends = [(m, t['total_growth_percent']) for m, t in trends.items() 
-                          if t.get('total_growth_percent', 0) < -5]
-        if negative_trends:
-            worst_trend = min(negative_trends, key=lambda x: x[1])
+        elif anomaly_pct > 1:
             recommendations.append({
                 'priority': 'Medium',
-                'action': f'Investigate decline in {worst_trend[0]}',
-                'evidence': f'{worst_trend[1]:.1f}% negative growth trend detected',
-                'impact': 'Identify root causes, prevent further decline, stabilize metrics',
-                'segment': 'Analysis',
-                'metric': f'{worst_trend[1]:.1f}% decline'
+                'action': 'Review anomalous records to identify patterns and root causes',
+                'evidence': '{} outliers identified in the dataset'.format(len(anomalies)),
+                'impact': 'Ensures analytical conclusions are based on reliable data patterns',
+                'metric': 'Data Quality',
+                'segment': 'General'
             })
     
-    # Recommendation 5: Monitoring
+    # ============================================
+    # TREND-BASED RECOMMENDATIONS
+    # ============================================
+    if trends:
+        for metric, trend_data in trends.items():
+            growth_pct = trend_data['total_growth_percent']
+            metric_display = metric.replace('_', ' ').title()
+            
+            if growth_pct < -20:
+                recommendations.append({
+                    'priority': 'High',
+                    'action': 'Investigate root causes of {} decline and develop mitigation strategy'.format(metric_display),
+                    'evidence': '{} declined {:.1f} percent over the analysis period'.format(metric_display, abs(growth_pct)),
+                    'impact': 'Significant business risk if negative trend continues unchecked',
+                    'metric': metric_display,
+                    'segment': 'General'
+                })
+            elif growth_pct < -5:
+                recommendations.append({
+                    'priority': 'Medium',
+                    'action': 'Analyze contributing factors to {} decline'.format(metric_display),
+                    'evidence': '{} decreased {:.1f} percent during the period'.format(metric_display, abs(growth_pct)),
+                    'impact': 'Understanding causes allows for proactive corrective action',
+                    'metric': metric_display,
+                    'segment': 'General'
+                })
+            elif growth_pct > 20:
+                recommendations.append({
+                    'priority': 'Low',
+                    'action': 'Identify and reinforce drivers of {} growth'.format(metric_display),
+                    'evidence': '{} growing at {:.1f} percent demonstrating positive momentum'.format(metric_display, growth_pct),
+                    'impact': 'Scaling successful approaches maximizes competitive advantage',
+                    'metric': metric_display,
+                    'segment': 'General'
+                })
+    
+    # ============================================
+    # SEGMENT-BASED RECOMMENDATIONS
+    # ============================================
+    if segments:
+        for segment_col, segment_data in segments.items():
+            counts = [s['count'] for s in segment_data.values()]
+            
+            if counts:
+                avg_count = np.mean(counts)
+                high_variance = np.std(counts) / avg_count if avg_count > 0 else 0
+                
+                if high_variance > 0.5:
+                    largest = max(segment_data.items(), key=lambda x: x[1]['count'])
+                    smallest = min(segment_data.items(), key=lambda x: x[1]['count'])
+                    ratio = largest[1]['count'] / smallest[1]['count']
+                    
+                    col_display = segment_col.replace('_', ' ').title()
+                    
+                    recommendations.append({
+                        'priority': 'Medium',
+                        'action': 'Analyze {} distribution and imbalance patterns'.format(col_display),
+                        'evidence': '{} is {:.1f} times larger than {}, indicating significant distribution variance'.format(largest[0], ratio, smallest[0]),
+                        'impact': 'Understanding distribution patterns informs resource allocation and strategic focus',
+                        'metric': col_display,
+                        'segment': col_display
+                    })
+    
+    # ============================================
+    # KPI VARIATION RECOMMENDATIONS
+    # ============================================
     if kpis:
+        for metric_name, kpi_data in kpis.items():
+            if kpi_data.get('std_dev', 0) > 0 and kpi_data.get('average', 0) > 0:
+                cv = kpi_data['std_dev'] / kpi_data['average']
+                
+                if cv > 1:
+                    metric_display = metric_name.replace('_', ' ').title()
+                    
+                    recommendations.append({
+                        'priority': 'Medium',
+                        'action': 'Understand drivers of {} variation and implement optimization strategies'.format(metric_display),
+                        'evidence': '{} demonstrates high variability with coefficient of variation of {:.2f}'.format(metric_display, cv),
+                        'impact': 'Identifying and reducing variability improves operational consistency and predictability',
+                        'metric': metric_display,
+                        'segment': 'General'
+                    })
+    
+    # ============================================
+    # DEFAULT RECOMMENDATION
+    # ============================================
+    if not recommendations:
         recommendations.append({
-            'priority': 'Medium',
-            'action': 'Establish KPI monitoring dashboard for real-time tracking',
-            'evidence': f'{len(kpis)} key metrics identified, multiple growth trends',
-            'impact': 'Enable proactive decision-making, faster response to issues',
-            'segment': 'Reporting',
-            'metric': f'{len(kpis)} metrics'
+            'priority': 'Low',
+            'action': 'Proceed with detailed analytical investigation',
+            'evidence': 'Dataset demonstrates acceptable quality and structure with no critical issues detected',
+            'impact': 'Ready to move forward with advanced analytical work and strategic analysis',
+            'metric': 'Overall',
+            'segment': 'General'
         })
     
-    return recommendations
-
-
-def format_anomalies_for_display(anomalies: pd.DataFrame) -> pd.DataFrame:
-    """
-    Format anomalies table for better display and analysis.
+    # Sort by priority
+    priority_order = {'High': 0, 'Medium': 1, 'Low': 2}
+    recommendations.sort(key=lambda x: priority_order.get(x['priority'], 3))
     
-    Adds:
-    - Anomaly score
-    - Severity level
-    - Key metrics
-    """
-    
-    if len(anomalies) == 0:
-        return pd.DataFrame()
-    
-    display_df = anomalies.copy()
-    
-    # Add severity level based on z-score if available
-    if 'z_score' in display_df.columns:
-        display_df['Severity'] = display_df['z_score'].apply(
-            lambda x: 'Critical' if abs(x) > 4 else 'High' if abs(x) > 3 else 'Medium'
-        )
-    
-    # Reorder columns to show most important first
-    cols = display_df.columns.tolist()
-    priority_cols = ['Severity'] if 'Severity' in cols else []
-    priority_cols += [c for c in ['z_score', 'anomaly_score'] if c in cols]
-    
-    other_cols = [c for c in cols if c not in priority_cols]
-    display_df = display_df[priority_cols + other_cols]
-    
-    return display_df
+    return recommendations[:10]
